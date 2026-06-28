@@ -74,14 +74,19 @@
     .nav-date{font-size:15px;font-weight:700;color:var(--text);display:block}
     .go-today{display:block;margin:2px auto 0;padding:4px 14px;background:none;border:1px solid var(--ac);color:var(--ac);border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;width:fit-content}
 
-    /* Level descs */
-    .level-descs{display:flex;gap:6px;padding:8px 14px 10px;background:var(--bg2);border-bottom:1px solid var(--border)}
-    .desc-group{flex:1;min-width:0}
-    .desc-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}
+    /* Per-task level descs */
     .l1{color:var(--red)}.l2{color:var(--amber)}.l3{color:var(--green)}
-    .desc-inp{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:#1e1e2e;color:var(--text2);outline:none;transition:border-color .15s}
-    .desc-inp:focus{border-color:var(--ac);background:var(--bg3)}
-    .desc-inp::placeholder{color:var(--text4)}
+    .task-levels-toggle{display:flex;align-items:center;gap:5px;margin-top:5px;cursor:pointer;width:fit-content}
+    .task-levels-toggle-label{font-size:11px;color:var(--text4);letter-spacing:.03em}
+    .task-levels-toggle-arrow{font-size:10px;color:var(--text4);transition:transform .2s}
+    .task-levels-toggle-arrow.open{transform:rotate(90deg)}
+    .task-level-descs{display:none;flex-direction:column;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+    .task-level-descs.open{display:flex}
+    .task-desc-row{display:flex;align-items:center;gap:6px}
+    .task-desc-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;width:46px}
+    .task-desc-inp{flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:#1a1a28;color:var(--text2);outline:none;transition:border-color .15s;-webkit-appearance:none}
+    .task-desc-inp:focus{border-color:var(--ac);background:var(--bg3)}
+    .task-desc-inp::placeholder{color:var(--text4)}
 
     /* Add task row */
     .add-row{display:flex;gap:6px;padding:8px 14px;background:var(--bg2);border-bottom:1px solid var(--border)}
@@ -334,17 +339,22 @@ function loadState() {
     var vt = { personal:1, work:1, log:1, system:1 };
     var sp = s.systemPhotos || [], photos = [];
     for (var pi = 0; pi < 8; pi++) photos.push(sp[pi] !== undefined ? sp[pi] : null);
+    var pTasks = (s.personal && s.personal.tasks) ? s.personal.tasks : [];
+    var wTasks = (s.work && s.work.tasks) ? s.work.tasks : [];
+    // Migrate old tasks that don't have per-task levelDescs
+    pTasks.forEach(function(t){ if(!t.levelDescs) t.levelDescs = ['','','']; });
+    wTasks.forEach(function(t){ if(!t.levelDescs) t.levelDescs = ['','','']; });
     return {
       tab: (s.tab && vt[s.tab]) ? s.tab : b.tab,
       view: s.view || b.view,
       selectedDate: s.selectedDate || '',
       personal: {
         levelDescs: (s.personal && s.personal.levelDescs) ? s.personal.levelDescs : b.personal.levelDescs,
-        tasks: (s.personal && s.personal.tasks) ? s.personal.tasks : []
+        tasks: pTasks
       },
       work: {
         levelDescs: (s.work && s.work.levelDescs) ? s.work.levelDescs : b.work.levelDescs,
-        tasks: (s.work && s.work.tasks) ? s.work.tasks : []
+        tasks: wTasks
       },
       weeklyResponses: s.weeklyResponses || [],
       weeklyInteracted: s.weeklyInteracted || {},
@@ -540,18 +550,6 @@ function renderDay() {
     '<button class="nav-arrow" onclick="nextDay()">›</button>' +
     '</div>';
 
-  // Level descs
-  var data = state[state.tab];
-  var descH = '<div class="level-descs">';
-  var cols = [{lbl:'Level 1', cls:'l1', ph:'Minimum...'},{lbl:'Level 2', cls:'l2', ph:'Solid...'},{lbl:'Level 3', cls:'l3', ph:'Peak...'}];
-  for (var li = 0; li < 3; li++) {
-    var vv = esc(data.levelDescs[li] || '');
-    descH += '<div class="desc-group"><div class="desc-lbl ' + cols[li].cls + '">' + cols[li].lbl + '</div>' +
-      '<input class="desc-inp" type="text" value="' + vv + '" placeholder="' + cols[li].ph + '" ' +
-      'oninput="onDescInput(' + li + ',this.value)" /></div>';
-  }
-  descH += '</div>';
-
   // Add row
   var addH = '';
   if (!isFuture) {
@@ -570,7 +568,10 @@ function renderDay() {
   }
 
   // Tasks
+  var data = state[state.tab];
   var tasks = data.tasks;
+  var lvColors = ['l1','l2','l3'];
+  var lvPhs = ['e.g. Just stretch…','e.g. Also lift weights…','e.g. Also do cardio…'];
   var tasksH = '<div class="tasks-wrap">';
   if (!tasks.length) {
     tasksH += '<p class="empty-msg">' + (isFuture ? 'Future day — check back then.' : 'No tasks yet. Add one above.') + '</p>';
@@ -579,16 +580,39 @@ function renderDay() {
       var task = tasks[ti];
       var hl = getHighestLevel(task, state.selectedDate);
       var descVal = esc(task.description || '');
+      var lvDescs = task.levelDescs || ['','',''];
+      var hasAnyDesc = lvDescs[0] || lvDescs[1] || lvDescs[2];
+
       tasksH += '<div class="task-card" data-lv="' + hl + '" id="tc-' + task.id + '">' +
         '<div class="task-main">' +
         '<div class="task-name">' + esc(task.name) + '</div>' +
-        '<input class="task-desc" type="text" value="' + descVal + '" placeholder="Add a note…" oninput="onTaskDesc(\'' + task.id + '\',this.value)" />' +
-        '</div>' +
+        '<input class="task-desc" type="text" value="' + descVal + '" placeholder="Add a note…" oninput="onTaskDesc(\'' + task.id + '\',this.value)" />';
+
+      // Level descs toggle
+      tasksH += '<div class="task-levels-toggle" onclick="toggleLevelDescs(\'' + task.id + '\')">' +
+        '<span class="task-levels-toggle-label">Level descriptions</span>' +
+        '<span class="task-levels-toggle-arrow" id="tla-' + task.id + '"' + (hasAnyDesc ? ' style="color:var(--ac)"' : '') + '>›</span>' +
+        '</div>';
+
+      // Level descs panel (hidden by default unless has content)
+      tasksH += '<div class="task-level-descs" id="tld-' + task.id + '">';
+      for (var li = 0; li < 3; li++) {
+        var lv = esc(lvDescs[li] || '');
+        tasksH += '<div class="task-desc-row">' +
+          '<span class="task-desc-lbl ' + lvColors[li] + '">Lv ' + (li+1) + '</span>' +
+          '<input class="task-desc-inp" type="text" value="' + lv + '" placeholder="' + lvPhs[li] + '" ' +
+          'oninput="onTaskLevelDesc(\'' + task.id + '\',' + li + ',this.value)" /></div>';
+      }
+      tasksH += '</div>';
+
+      tasksH += '</div>' + // end task-main
         '<div class="task-chips">';
       for (var l = 1; l <= 3; l++) {
         var key = state.selectedDate + '-' + l;
         var checked = !!task.completions[key];
-        tasksH += '<label class="chip chip' + l + (checked?' on':'') + '">' +
+        // Show tooltip if level desc exists
+        var lDesc = lvDescs[l-1] ? ' title="' + esc(lvDescs[l-1]) + '"' : '';
+        tasksH += '<label class="chip chip' + l + (checked?' on':'') + '"' + lDesc + '>' +
           '<input type="checkbox" ' + (checked?'checked':'') + (isFuture?' disabled':'') +
           ' onchange="onCheck(\'' + task.id + '\',\'' + state.selectedDate + '\',' + l + ',this)" />' +
           l + '</label>';
@@ -600,7 +624,7 @@ function renderDay() {
   }
   tasksH += '</div>';
 
-  mc.innerHTML = navH + descH + addH + auditH + tasksH;
+  mc.innerHTML = navH + addH + auditH + tasksH;
 }
 
 function prevDay() {
@@ -614,6 +638,17 @@ function nextDay() {
   state.selectedDate = dk(d); save(); renderDay();
 }
 function goToday() { state.selectedDate = dk(today0()); save(); renderDay(); }
+
+function toggleLevelDescs(taskId) {
+  var panel = document.getElementById('tld-' + taskId);
+  var arrow = document.getElementById('tla-' + taskId);
+  if (!panel) return;
+  var isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  if (arrow) {
+    arrow.classList.toggle('open', !isOpen);
+  }
+}
 
 // ── WEEK VIEW ──
 function renderWeek() {
@@ -777,7 +812,7 @@ function removePhoto(idx) { state.systemPhotos[idx] = null; save(); renderSystem
 function addTask() {
   var inp = document.getElementById('task-inp'); if (!inp) return;
   var name = inp.value.trim(); if (!name) return;
-  state[state.tab].tasks.push({ id: String(Date.now()), name: name, description: '', completions: {} });
+  state[state.tab].tasks.push({ id: String(Date.now()), name: name, description: '', levelDescs: ['','',''], completions: {} });
   save(); inp.value = ''; renderDay();
 }
 function delTask(id) {
@@ -797,7 +832,17 @@ function onCheck(taskId, dateStr, level, cb) {
   var card = document.getElementById('tc-' + taskId);
   if (card) card.setAttribute('data-lv', getHighestLevel(task, dateStr));
 }
-function onDescInput(idx, value) { state[state.tab].levelDescs[idx] = value; save(); }
+function onTaskLevelDesc(taskId, lvIdx, value) {
+  var tasks = state[state.tab].tasks;
+  for (var i = 0; i < tasks.length; i++) {
+    if (tasks[i].id === taskId) {
+      if (!tasks[i].levelDescs) tasks[i].levelDescs = ['','',''];
+      tasks[i].levelDescs[lvIdx] = value;
+      break;
+    }
+  }
+  save();
+}
 function onTaskDesc(taskId, value) {
   var tasks = state[state.tab].tasks;
   for (var i = 0; i < tasks.length; i++) {

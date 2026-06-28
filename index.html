@@ -138,10 +138,11 @@
 
     /* Task cards */
     .tasks-wrap{padding:8px 14px;display:flex;flex-direction:column;gap:6px}
-    .task-card{background:var(--bg3);border-radius:var(--radius);padding:12px 12px 10px 14px;display:flex;align-items:flex-start;gap:10px;border-left:3px solid var(--border2);transition:border-color .2s;position:relative}
+    .task-card{background:var(--bg3);border-radius:var(--radius);padding:12px 12px 10px 14px;display:flex;flex-direction:column;border-left:3px solid var(--border2);transition:border-color .2s;position:relative}
     .task-card[data-lv="1"]{border-left-color:var(--red)}
     .task-card[data-lv="2"]{border-left-color:var(--amber)}
     .task-card[data-lv="3"]{border-left-color:var(--green)}
+    .task-card-top{display:flex;align-items:flex-start;gap:10px}
     .task-main{flex:1;min-width:0}
     .task-name{font-size:15px;font-weight:700;color:#e8e8f8;line-height:1.25}
     .task-desc{display:block;width:100%;font-size:12px;color:var(--text4);background:transparent;border:none;outline:none;padding:3px 0 4px;line-height:1.4;resize:none}
@@ -187,13 +188,15 @@
 
     /* Month card */
     .month-card{background:var(--bg3);border-radius:var(--radius);padding:10px 12px;border:1px solid var(--border)}
-    .mc-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-    .mc-name{font-size:14px;font-weight:700;color:#d0d0f0}
-    .mc-stat{font-size:13px;font-weight:800;color:var(--ac)}
-    .prog-bar{height:4px;background:#1a1a30;border-radius:2px;overflow:hidden;margin-bottom:8px}
+    .month-tasks-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .month-task-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .mc-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+    .mc-name{font-size:11px;font-weight:700;color:#d0d0f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mc-stat{font-size:11px;font-weight:800;color:var(--ac);flex-shrink:0;margin-left:4px}
+    .prog-bar{height:3px;background:#1a1a30;border-radius:2px;overflow:hidden;margin-bottom:5px}
     .prog-fill{height:100%;background:var(--ac);border-radius:2px;transition:width .5s}
-    .dot-grid{display:flex;flex-direction:column;gap:4px}
-    .dot-week{display:flex;gap:4px}
+    .dot-grid{display:flex;flex-direction:column;gap:3px}
+    .dot-week{display:flex;gap:3px}
 
     /* Log */
     .log-wrap{padding:10px 14px;display:flex;flex-direction:column;gap:8px}
@@ -626,6 +629,7 @@ function renderDay() {
       var hasAnyDesc = lvDescs[0] || lvDescs[1] || lvDescs[2];
 
       tasksH += '<div class="task-card" data-lv="' + hl + '" id="tc-' + task.id + '">' +
+        '<div class="task-card-top">' +
         '<div class="task-main">' +
         '<input class="task-name-inp" type="text" value="' + esc(task.name) + '" ' +
         'oninput="onTaskName(\'' + task.id + '\',this.value)" />' +
@@ -638,7 +642,22 @@ function renderDay() {
         '<span class="task-levels-toggle-arrow' + (isOpen ? ' open' : '') + '" id="tla-' + task.id + '"' + (hasAnyDesc ? ' style="color:var(--ac)"' : '') + '>›</span>' +
         '</div>';
 
-      // Level descs panel
+      tasksH += '</div>' + // end task-main
+        '<div class="task-chips">';
+      for (var l = 1; l <= 3; l++) {
+        var key = state.selectedDate + '-' + l;
+        var checked = !!task.completions[key];
+        var lDesc = lvDescs[l-1] ? ' title="' + esc(lvDescs[l-1]) + '"' : '';
+        tasksH += '<label class="chip chip' + l + (checked?' on':'') + '"' + lDesc + '>' +
+          '<input type="checkbox" ' + (checked?'checked':'') +
+          ' onchange="onCheck(\'' + task.id + '\',\'' + state.selectedDate + '\',' + l + ',this)" />' +
+          l + '</label>';
+      }
+      tasksH += '</div>' +
+        '<button class="del-btn" onclick="delTask(\'' + task.id + '\')">✕</button>' +
+        '</div>'; // end task-card-top
+
+      // Level descs panel — full card width
       tasksH += '<div class="task-level-descs' + (isOpen ? ' open' : '') + '" id="tld-' + task.id + '">';
       for (var li = 0; li < 3; li++) {
         var lv = esc(lvDescs[li] || '');
@@ -649,21 +668,7 @@ function renderDay() {
       }
       tasksH += '</div>';
 
-      tasksH += '</div>' + // end task-main
-        '<div class="task-chips">';
-      for (var l = 1; l <= 3; l++) {
-        var key = state.selectedDate + '-' + l;
-        var checked = !!task.completions[key];
-        // Show tooltip if level desc exists
-        var lDesc = lvDescs[l-1] ? ' title="' + esc(lvDescs[l-1]) + '"' : '';
-        tasksH += '<label class="chip chip' + l + (checked?' on':'') + '"' + lDesc + '>' +
-          '<input type="checkbox" ' + (checked?'checked':'') +
-          ' onchange="onCheck(\'' + task.id + '\',\'' + state.selectedDate + '\',' + l + ',this)" />' +
-          l + '</label>';
-      }
-      tasksH += '</div>' +
-        '<button class="del-btn" onclick="delTask(\'' + task.id + '\')">✕</button>' +
-        '</div>';
+      tasksH += '</div>'; // end task-card
     }
   }
   tasksH += '</div>';
@@ -759,14 +764,16 @@ function renderMonth() {
     '<div class="sum-lbl">Zero days this month' + (zeroDays === 0 ? ' — perfect month! 🔥' : '') + '</div></div>';
 
   if (tasks.length) {
+    h += '<div class="month-card"><div class="month-tasks-grid">';
+    var weeks = groupByWeek(days);
     for (var ti = 0; ti < tasks.length; ti++) {
       var task = tasks[ti];
       var tnz = countTaskNZ(task, days);
       var pct = days.length ? Math.round(tnz/days.length*100) : 0;
-      h += '<div class="month-card"><div class="mc-hdr"><span class="mc-name">' + esc(task.name) + '</span><span class="mc-stat">' + tnz + '/' + days.length + '</span></div>' +
+      h += '<div class="month-task-cell">' +
+        '<div class="mc-hdr"><span class="mc-name">' + esc(task.name) + '</span><span class="mc-stat">' + tnz + '/' + days.length + '</span></div>' +
         '<div class="prog-bar"><div class="prog-fill" style="width:' + pct + '%"></div></div>' +
         '<div class="dot-grid">';
-      var weeks = groupByWeek(days);
       for (var wi = 0; wi < weeks.length; wi++) {
         h += '<div class="dot-week">';
         for (var di = 0; di < weeks[wi].length; di++) {
@@ -776,6 +783,7 @@ function renderMonth() {
       }
       h += '</div></div>';
     }
+    h += '</div></div>';
   } else {
     h += '<p class="empty-msg">No tasks yet. Add some in Day view.</p>';
   }

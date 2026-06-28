@@ -361,7 +361,7 @@ function blankState() {
     work: { levelDescs: ['', '', ''], tasks: [] },
     weeklyResponses: [], weeklyInteracted: {}, weeklyDone: {},
     monthlyAuditDone: {}, systemPhotos: [null,null,null,null,null,null,null,null],
-    rules: []
+    rules: [], levelDescsOpen: {}
   };
 }
 
@@ -402,7 +402,8 @@ function loadState() {
       weeklyDone: s.weeklyDone || {},
       monthlyAuditDone: s.monthlyAuditDone || {},
       systemPhotos: photos,
-      rules: s.rules || []
+      rules: s.rules || [],
+      levelDescsOpen: s.levelDescsOpen || {}
     };
   } catch(e) { return blankState(); }
 }
@@ -631,13 +632,14 @@ function renderDay() {
         '<input class="task-desc" type="text" value="' + descVal + '" placeholder="Add a note…" oninput="onTaskDesc(\'' + task.id + '\',this.value)" />';
 
       // Level descs toggle
+      var isOpen = !!(state.levelDescsOpen && state.levelDescsOpen[task.id]);
       tasksH += '<div class="task-levels-toggle" onclick="toggleLevelDescs(\'' + task.id + '\')">' +
         '<span class="task-levels-toggle-label">Level descriptions</span>' +
-        '<span class="task-levels-toggle-arrow" id="tla-' + task.id + '"' + (hasAnyDesc ? ' style="color:var(--ac)"' : '') + '>›</span>' +
+        '<span class="task-levels-toggle-arrow' + (isOpen ? ' open' : '') + '" id="tla-' + task.id + '"' + (hasAnyDesc ? ' style="color:var(--ac)"' : '') + '>›</span>' +
         '</div>';
 
-      // Level descs panel (hidden by default unless has content)
-      tasksH += '<div class="task-level-descs" id="tld-' + task.id + '">';
+      // Level descs panel
+      tasksH += '<div class="task-level-descs' + (isOpen ? ' open' : '') + '" id="tld-' + task.id + '">';
       for (var li = 0; li < 3; li++) {
         var lv = esc(lvDescs[li] || '');
         tasksH += '<div class="task-desc-row">' +
@@ -690,9 +692,11 @@ function toggleLevelDescs(taskId) {
   if (!panel) return;
   var isOpen = panel.classList.contains('open');
   panel.classList.toggle('open', !isOpen);
-  if (arrow) {
-    arrow.classList.toggle('open', !isOpen);
-  }
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+  if (!state.levelDescsOpen) state.levelDescsOpen = {};
+  if (!isOpen) state.levelDescsOpen[taskId] = true;
+  else delete state.levelDescsOpen[taskId];
+  save();
 }
 
 // ── WEEK VIEW ──

@@ -959,12 +959,12 @@ function syncGetCreds() {
   };
 }
 
-function syncFeedback(state, msg) {
+function syncFeedback(status, msg) {
   var btn = document.getElementById('sync-btn');
   if (!btn) return;
-  btn.className = 'sync-btn ' + state;
+  btn.className = 'sync-btn ' + status;
   btn.title = msg;
-  if (state === 'ok' || state === 'err') {
+  if (status === 'ok' || status === 'err') {
     setTimeout(function() {
       btn.className = 'sync-btn';
       btn.title = 'Push to GitHub';
@@ -982,8 +982,10 @@ function syncPush() {
   var btn = document.getElementById('sync-btn');
   if (btn) { btn.classList.add('syncing'); btn.textContent = '…'; }
 
-  // Strip photos from sync payload (too large) — store separately
-  var payload = JSON.stringify(state);
+  // Strip photos before pushing — base64 images are too large for Gist
+  var stripped = JSON.parse(JSON.stringify(state));
+  stripped.systemPhotos = [null,null,null,null,null,null,null,null];
+  var payload = JSON.stringify(stripped);
 
   fetch('https://api.github.com/gists/' + c.gist, {
     method: 'PATCH',
@@ -994,16 +996,19 @@ function syncPush() {
     body: JSON.stringify({ files: { [GIST_FILENAME]: { content: payload } } })
   })
   .then(function(r) {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (r.status === 401) throw new Error('Token invalid or expired (401)');
+    if (r.status === 404) throw new Error('Gist not found — check your Gist ID (404)');
+    if (!r.ok) throw new Error('GitHub returned HTTP ' + r.status);
     var now = new Date().toLocaleString();
     localStorage.setItem('gh_last_sync', now);
     syncFeedback('ok', 'Pushed at ' + now);
-    if (btn) btn.textContent = '✓';
+    if (btn) { btn.textContent = '✓'; btn.classList.remove('syncing'); }
     if (state.tab === 'system') renderSystem();
   })
   .catch(function(e) {
-    syncFeedback('err', 'Push failed: ' + e.message);
-    if (btn) btn.textContent = '✗';
+    syncFeedback('err', e.message);
+    if (btn) { btn.textContent = '✗'; btn.classList.remove('syncing'); }
+    alert('Push failed: ' + e.message);
   });
 }
 
@@ -1019,16 +1024,24 @@ function syncPull() {
   if (btn) { btn.classList.add('syncing'); btn.textContent = '…'; }
 
   fetch('https://api.github.com/gists/' + c.gist, {
-    headers: { 'Authorization': 'token ' + c.token }
+    headers: {
+      'Authorization': 'token ' + c.token,
+      'Accept': 'application/vnd.github.v3+json'
+    }
   })
   .then(function(r) {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (r.status === 401) throw new Error('Token invalid or expired (401)');
+    if (r.status === 404) throw new Error('Gist not found — check your Gist ID (404)');
+    if (!r.ok) throw new Error('GitHub returned HTTP ' + r.status);
     return r.json();
   })
   .then(function(data) {
     var file = data.files && data.files[GIST_FILENAME];
-    if (!file || !file.content) throw new Error('File not found in Gist');
-    var pulled = JSON.parse(file.content);
+    if (!file) throw new Error('File "' + GIST_FILENAME + '" not found in Gist — have you Pushed from your phone yet?');
+    if (!file.content) throw new Error('Gist file is empty — Push from your phone first');
+    var pulled;
+    try { pulled = JSON.parse(file.content); }
+    catch(e) { throw new Error('Gist data is corrupted: ' + e.message); }
     // Preserve local photos (not synced due to size)
     pulled.systemPhotos = state.systemPhotos;
     state = pulled;
@@ -1040,8 +1053,9 @@ function syncPull() {
     render();
   })
   .catch(function(e) {
-    syncFeedback('err', 'Pull failed: ' + e.message);
-    if (btn) btn.textContent = '✗';
+    syncFeedback('err', e.message);
+    if (btn) { btn.textContent = '✗'; btn.classList.remove('syncing'); }
+    alert('Pull failed: ' + e.message);
   });
 }
 

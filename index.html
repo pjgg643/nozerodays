@@ -96,7 +96,7 @@
     .task-level-descs.open{display:flex}
     .task-desc-row{display:flex;align-items:flex-start;gap:4px}
     .task-desc-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;width:32px;padding-top:7px}
-    .task-desc-inp{flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:#1a1a28;color:var(--text2);outline:none;transition:border-color .15s;-webkit-appearance:none;resize:none;overflow:visible;min-height:28px;line-height:1.4;width:0}
+    .task-desc-inp{flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:#1a1a28;color:var(--text2);outline:none;transition:border-color .15s;-webkit-appearance:none;resize:none;overflow:hidden;min-height:28px;line-height:1.4;width:0}
     .task-desc-inp:focus{border-color:var(--ac);background:var(--bg3)}
     .task-desc-inp::placeholder{color:var(--text4)}
     /* Editable task name */
@@ -141,7 +141,7 @@
     /* Task cards */
     .tasks-wrap{padding:8px 14px;display:flex;flex-direction:column;gap:6px}
     .task-card{background:var(--bg3);border-radius:var(--radius);padding:12px 12px 10px 14px;display:flex;flex-direction:column;border-left:3px solid var(--border2);transition:border-color .2s;position:relative}
-    .task-card[data-lv="0"]{border-left-color:#78aef0}
+    .task-card[data-lv="0"]{border-left-color:#555}
     .task-card[data-lv="1"]{border-left-color:var(--red)}
     .task-card[data-lv="2"]{border-left-color:var(--amber)}
     .task-card[data-lv="3"]{border-left-color:var(--green)}
@@ -244,7 +244,15 @@
     .sync-action-btn.push{background:rgba(120,174,240,.12);border-color:rgba(120,174,240,.4);color:#78aef0}
     .sync-action-btn.pull{background:rgba(95,212,160,.12);border-color:rgba(95,212,160,.4);color:#5fd4a0}
     .sync-action-btn:active{opacity:.7}
-    .sync-confirm-area{display:flex;flex-direction:column;gap:8px}
+    .sync-open-modal{align-items:center;text-align:center;gap:10px}
+    .sync-open-icon{font-size:36px;margin:4px 0}
+    .sync-open-title{font-size:18px;font-weight:800;color:var(--text)}
+    .sync-open-sub{font-size:13px;color:var(--text3);line-height:1.5;padding:0 8px}
+    .sync-open-btns{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:4px}
+    .sync-open-btn{width:100%;padding:13px;border-radius:var(--radius);font-size:15px;font-weight:700;cursor:pointer;border:1px solid;transition:all .15s}
+    .sync-open-btn.pull{background:rgba(95,212,160,.12);border-color:rgba(95,212,160,.4);color:#5fd4a0}
+    .sync-open-btn.skip{background:transparent;border-color:var(--border);color:var(--text4)}
+    .sync-open-btn:disabled{opacity:.5;pointer-events:none}
     .sync-confirm-label{font-size:12px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.06em;text-align:center}
     .sync-confirm-btns{display:flex;gap:10px}
     .sync-confirm-btn{flex:1;padding:14px 8px;border-radius:var(--radius);border:1px solid;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:all .15s}
@@ -1193,6 +1201,57 @@ function confirmSyncAction(action) {
   }
 }
 
+function showSyncModal() {
+  var overlay = document.getElementById('modal-overlay');
+  overlay.innerHTML = '<div class="modal-sheet sync-open-modal">' +
+    '<div class="modal-handle"></div>' +
+    '<div class="sync-open-icon">☁</div>' +
+    '<div class="sync-open-title">Sync on open</div>' +
+    '<div class="sync-open-sub">Pull the latest data from GitHub before you start?</div>' +
+    '<div class="sync-open-btns">' +
+    '<button class="sync-open-btn pull" onclick="syncOpenPull()">⇩ Pull latest</button>' +
+    '<button class="sync-open-btn skip" onclick="closeModal()">Skip</button>' +
+    '</div>' +
+    '</div>';
+  overlay.style.display = 'flex';
+}
+
+function syncOpenPull() {
+  var overlay = document.getElementById('modal-overlay');
+  // Show loading state inside modal
+  var btn = overlay.querySelector('.sync-open-btn.pull');
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  var c = syncGetCreds();
+  fetch('https://api.github.com/gists/' + c.gist, {
+    headers: { 'Authorization': 'token ' + c.token, 'Accept': 'application/vnd.github.v3+json' }
+  })
+  .then(function(r) {
+    if (r.status === 401) throw new Error('Token invalid or expired (401)');
+    if (r.status === 404) throw new Error('Gist not found (404)');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    var file = data.files && data.files[GIST_FILENAME];
+    if (!file || !file.content) throw new Error('No data in Gist yet');
+    var pulled;
+    try { pulled = JSON.parse(file.content); } catch(e) { throw new Error('Gist data corrupted'); }
+    pulled.systemPhotos = state.systemPhotos;
+    state = pulled;
+    saveNav();
+    markClean();
+    var now = new Date().toLocaleString();
+    localStorage.setItem('gh_last_sync', now);
+    closeModal();
+    render();
+  })
+  .catch(function(e) {
+    if (btn) { btn.textContent = '⇩ Pull latest'; btn.disabled = false; }
+    var sub = overlay.querySelector('.sync-open-sub');
+    if (sub) { sub.textContent = 'Error: ' + e.message; sub.style.color = 'var(--red)'; }
+  });
+}
+
 function syncPullSilent() {
   var c = syncGetCreds();
   if (!c.token || !c.gist) return;
@@ -1315,14 +1374,10 @@ function init() {
   ensureValidDate();
   applyTheme(state.tab);
   render();
-  // Auto-pull on unlock if configured and not synced recently (5 min cooldown)
+  // Show sync-on-open modal if GitHub is configured
   var token = localStorage.getItem('gh_token');
   var gist  = localStorage.getItem('gh_gist');
-  if (token && gist) {
-    var lastSync = localStorage.getItem('gh_last_sync');
-    var msSince = lastSync ? (Date.now() - new Date(lastSync).getTime()) : Infinity;
-    if (msSince > 5 * 60 * 1000) syncPullSilent();
-  }
+  if (token && gist) showSyncModal();
 
   // Swipe to navigate days
   var mc = document.getElementById('main');

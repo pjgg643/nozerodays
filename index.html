@@ -70,6 +70,8 @@
     #t-rules.active{background:rgba(244,200,105,.22);border-color:rgba(244,200,105,.55);color:#f8dc9a;backdrop-filter:blur(4px)}
     #t-system{border-color:rgba(244,149,106,.3);color:#f4956a}
     #t-system.active{background:rgba(244,149,106,.22);border-color:rgba(244,149,106,.55);color:#f8b898;backdrop-filter:blur(4px)}
+    #t-github{border-color:rgba(120,174,240,.3);color:#78aef0}
+    #t-github.active{background:rgba(120,174,240,.22);border-color:rgba(120,174,240,.55);color:#b8d6ff;backdrop-filter:blur(4px)}
     .tab-btn.sm{flex:.65;font-size:12px}
     .view-row{display:flex;gap:6px}
     .view-btn{flex:1;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text3);font-size:12px;font-weight:500;cursor:pointer;transition:all .18s}
@@ -225,7 +227,8 @@
 
     .sync-btn{height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid rgba(120,174,240,.3);background:rgba(120,174,240,.08);color:#78aef0;font-size:15px;font-weight:700;cursor:pointer;transition:all .18s;flex-shrink:0}
     .sync-btn:active{background:rgba(120,174,240,.22)}
-    .sync-btn.syncing{opacity:.5;pointer-events:none}
+    .sync-btn.dirty{border-color:rgba(244,200,105,.7);background:rgba(244,200,105,.18);color:#f4c869;animation:pulse-dirty 1.8s ease-in-out infinite}
+    @keyframes pulse-dirty{0%,100%{box-shadow:0 0 0 0 rgba(244,200,105,.4)}50%{box-shadow:0 0 0 5px rgba(244,200,105,.0)}}
     .sync-btn.ok{border-color:rgba(95,212,160,.5);background:rgba(95,212,160,.12);color:#5fd4a0}
     .sync-btn.err{border-color:rgba(255,123,150,.5);background:rgba(255,123,150,.12);color:var(--red)}
     /* Sync settings */
@@ -241,7 +244,18 @@
     .sync-action-btn.push{background:rgba(120,174,240,.12);border-color:rgba(120,174,240,.4);color:#78aef0}
     .sync-action-btn.pull{background:rgba(95,212,160,.12);border-color:rgba(95,212,160,.4);color:#5fd4a0}
     .sync-action-btn:active{opacity:.7}
-    .sync-last{font-size:11px;color:var(--text4);text-align:center}
+    .sync-confirm-area{display:flex;flex-direction:column;gap:8px}
+    .sync-confirm-label{font-size:12px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.06em;text-align:center}
+    .sync-confirm-btns{display:flex;gap:10px}
+    .sync-confirm-btn{flex:1;padding:14px 8px;border-radius:var(--radius);border:1px solid;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:all .15s}
+    .sync-confirm-btn.push{background:rgba(120,174,240,.1);border-color:rgba(120,174,240,.4)}
+    .sync-confirm-btn.pull{background:rgba(95,212,160,.1);border-color:rgba(95,212,160,.4)}
+    .sync-confirm-btn:active{opacity:.7;transform:scale(.97)}
+    .sync-confirm-icon{font-size:22px}
+    .sync-confirm-btn.push .sync-confirm-icon{color:#78aef0}
+    .sync-confirm-btn.pull .sync-confirm-icon{color:#5fd4a0}
+    .sync-confirm-title{font-size:14px;font-weight:800;color:var(--text)}
+    .sync-confirm-sub{font-size:11px;color:var(--text4)}
     .sync-help{font-size:11px;color:var(--text4);line-height:1.7;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--border)}
     .sync-help strong{color:var(--text3)}
     .photo-lightbox{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:20px;gap:12px;position:relative}
@@ -317,8 +331,8 @@
       <button class="tab-btn" id="t-personal" data-tab="personal">Personal</button>
       <button class="tab-btn" id="t-work" data-tab="work">Work</button>
       <button class="tab-btn sm" id="t-log" data-tab="log">Log</button>
-      <button class="tab-btn sm" id="t-rules" data-tab="rules">Rules</button>
       <button class="tab-btn sm" id="t-system" data-tab="system">System</button>
+      <button class="tab-btn sm" id="t-github" data-tab="github">GitHub</button>
     </div>
     <div class="view-row" id="view-row">
       <button class="view-btn" id="v-day" data-view="day">Day</button>
@@ -434,9 +448,24 @@ function loadState() {
   } catch(e) { return blankState(); }
 }
 
+// ── DIRTY STATE (unsaved sync) ──
+var syncDirty = false;
+function markDirty() {
+  syncDirty = true;
+  var btn = document.getElementById('sync-btn');
+  if (btn) { btn.classList.add('dirty'); btn.textContent = '⇧'; btn.title = 'Changes made — push to GitHub'; }
+}
+function markClean() {
+  syncDirty = false;
+  var btn = document.getElementById('sync-btn');
+  if (btn) { btn.classList.remove('dirty'); btn.textContent = '⇧'; btn.title = 'Push to GitHub'; }
+}
+
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  catch(e) { alert('Storage full. Remove a photo to free space.'); }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    markDirty();
+  } catch(e) { alert('Storage full. Remove a photo to free space.'); }
 }
 
 // ── DATE HELPERS ──
@@ -578,7 +607,7 @@ function setView(v) {
 
 // ── RENDER ──
 function render() {
-  var tabs = ['personal','work','log','rules','system'];
+  var tabs = ['personal','work','log','system','github'];
   tabs.forEach(function(t) {
     var b = document.getElementById('t-' + t);
     if (b) b.classList.toggle('active', state.tab === t);
@@ -596,8 +625,8 @@ function render() {
     else renderMonth();
   } else if (state.tab === 'log') {
     renderLog();
-  } else if (state.tab === 'rules') {
-    renderRules();
+  } else if (state.tab === 'github') {
+    renderGithub();
   } else {
     renderSystem();
   }
@@ -861,34 +890,7 @@ var SYS_LABELS = ['','','','','','','',''];
 
 function renderSystem() {
   var mc = document.getElementById('main');
-  var token = localStorage.getItem('gh_token') || '';
-  var gist  = localStorage.getItem('gh_gist')  || '';
-  var auto  = localStorage.getItem('gh_auto')  === '1';
-  var lastSync = localStorage.getItem('gh_last_sync') || '';
-
-  var syncHtml = '<div class="sync-settings">' +
-    '<div class="sync-title">☁ GitHub Gist Sync</div>' +
-    '<div class="sync-row"><label class="sync-lbl">Personal Access Token</label>' +
-    '<input class="sync-inp" type="password" id="ss-token" value="' + esc(token) + '" placeholder="ghp_…" ' +
-    'oninput="localStorage.setItem(\'gh_token\',this.value)" /></div>' +
-    '<div class="sync-row"><label class="sync-lbl">Gist ID</label>' +
-    '<input class="sync-inp" type="text" id="ss-gist" value="' + esc(gist) + '" placeholder="abc123…" ' +
-    'oninput="localStorage.setItem(\'gh_gist\',this.value)" /></div>' +
-    '<div class="sync-row sync-row-check"><label class="sync-check-lbl">' +
-    '<input type="checkbox" ' + (auto?'checked':'') + ' onchange="localStorage.setItem(\'gh_auto\',this.checked?\'1\':\'0\')" /> ' +
-    'Auto-sync on every save</label></div>' +
-    '<div class="sync-btns">' +
-    '<button class="sync-action-btn push" onclick="syncPush()">⇧ Push (save to Gist)</button>' +
-    '<button class="sync-action-btn pull" onclick="syncPull()">⇩ Pull (load from Gist)</button>' +
-    '</div>' +
-    (lastSync ? '<div class="sync-last">Last sync: ' + lastSync + '</div>' : '') +
-    '<div class="sync-help">1. Go to github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → New token<br>' +
-    '2. Give it only the <strong>gist</strong> scope, copy the token above<br>' +
-    '3. Go to gist.github.com → New secret gist → create any file → copy the ID from the URL<br>' +
-    '4. Hit Push from your phone, Pull on your browser (or vice versa)</div>' +
-    '</div>';
-
-  var h = '<div class="sys-wrap">' + syncHtml + '<p class="sys-note" style="margin-top:8px">Your discipline system. Tap a slot to add a photo.</p><div class="photo-grid">';
+  var h = '<div class="sys-wrap"><p class="sys-note">Your discipline system. Tap a slot to add a photo.</p><div class="photo-grid">';
   for (var i = 0; i < 8; i++) {
     var up = state.systemPhotos[i];
     h += '<div class="photo-slot">';
@@ -1001,9 +1003,10 @@ function syncPush() {
     if (!r.ok) throw new Error('GitHub returned HTTP ' + r.status);
     var now = new Date().toLocaleString();
     localStorage.setItem('gh_last_sync', now);
+    markClean();
     syncFeedback('ok', 'Pushed at ' + now);
     if (btn) { btn.textContent = '✓'; btn.classList.remove('syncing'); }
-    if (state.tab === 'system') renderSystem();
+    if (state.tab === 'github') renderGithub();
   })
   .catch(function(e) {
     syncFeedback('err', e.message);
@@ -1059,18 +1062,6 @@ function syncPull() {
   });
 }
 
-// Hook auto-sync into save
-var _origSave = null;
-function initAutoSync() {
-  // Wrap save() to auto-push when enabled
-  var realSave = save;
-  save = function() {
-    realSave();
-    if (localStorage.getItem('gh_auto') === '1') {
-      syncPush();
-    }
-  };
-}
 function addTask() {
   var inp = document.getElementById('task-inp'); if (!inp) return;
   var name = inp.value.trim(); if (!name) return;
@@ -1140,49 +1131,98 @@ function saveEditedLog(idx) {
 }
 
 // ── RULES VIEW ──
-function renderRules() {
+// ── GITHUB TAB ──
+function renderGithub() {
   var mc = document.getElementById('main');
-  var h = '<div class="rules-wrap">' +
-    '<div class="rules-add-row">' +
-    '<input class="rules-inp" id="rule-inp" type="text" placeholder="Add a rule…" ' +
-    'onkeydown="if(event.key===\'Enter\')addRule()" />' +
-    '<button class="rules-add-btn" onclick="addRule()">＋ Add</button>' +
-    '</div>';
-  if (!state.rules.length) {
-    h += '<p class="rules-empty">No rules yet. Add your non-negotiables above.</p>';
-  } else {
-    for (var i = 0; i < state.rules.length; i++) {
-      h += '<div class="rule-card">' +
-        '<span class="rule-num">' + (i+1) + '</span>' +
-        '<textarea class="rule-text" rows="1" ' +
-        'oninput="onRuleText(' + i + ',this.value);autoGrow(this)">' + esc(state.rules[i]) + '</textarea>' +
-        '<button class="rule-del" onclick="deleteRule(' + i + ')">✕</button>' +
-        '</div>';
-    }
-  }
-  h += '</div>';
+  var token = localStorage.getItem('gh_token') || '';
+  var gist  = localStorage.getItem('gh_gist')  || '';
+  var lastSync = localStorage.getItem('gh_last_sync') || '';
+  var configured = !!(token && gist);
+
+  var h = '<div class="sys-wrap">' +
+    '<div class="sync-settings">' +
+    '<div class="sync-title">☁ GitHub Gist Sync</div>' +
+    '<div class="sync-row"><label class="sync-lbl">Personal Access Token</label>' +
+    '<input class="sync-inp" type="password" id="ss-token" value="' + esc(token) + '" placeholder="ghp_…" ' +
+    'oninput="localStorage.setItem(\'gh_token\',this.value)" /></div>' +
+    '<div class="sync-row"><label class="sync-lbl">Gist ID</label>' +
+    '<input class="sync-inp" type="text" id="ss-gist" value="' + esc(gist) + '" placeholder="abc123…" ' +
+    'oninput="localStorage.setItem(\'gh_gist\',this.value)" /></div>' +
+    (lastSync ? '<div class="sync-last">Last sync: ' + lastSync + '</div>' : '') +
+    '<div class="sync-confirm-area">' +
+    '<div class="sync-confirm-label">What would you like to do?</div>' +
+    '<div class="sync-confirm-btns">' +
+    '<button class="sync-confirm-btn push" onclick="confirmSyncAction(\'push\')">' +
+    '<span class="sync-confirm-icon">⇧</span>' +
+    '<span class="sync-confirm-title">Push</span>' +
+    '<span class="sync-confirm-sub">Save local → Gist</span>' +
+    '</button>' +
+    '<button class="sync-confirm-btn pull" onclick="confirmSyncAction(\'pull\')">' +
+    '<span class="sync-confirm-icon">⇩</span>' +
+    '<span class="sync-confirm-title">Pull</span>' +
+    '<span class="sync-confirm-sub">Load Gist → local</span>' +
+    '</button>' +
+    '</div>' +
+    '</div>' +
+    '</div></div>';
   mc.innerHTML = h;
-  // Auto-grow existing textareas
-  var tas = mc.querySelectorAll('textarea');
-  for (var ti = 0; ti < tas.length; ti++) autoGrow(tas[ti]);
-}
-function addRule() {
-  var inp = document.getElementById('rule-inp'); if (!inp) return;
-  var text = inp.value.trim(); if (!text) return;
-  if (!state.rules) state.rules = [];
-  state.rules.push(text);
-  save(); inp.value = ''; renderRules();
-}
-function deleteRule(idx) {
-  state.rules.splice(idx, 1);
-  save(); renderRules();
-}
-function onRuleText(idx, value) {
-  if (!state.rules) state.rules = [];
-  state.rules[idx] = value;
-  save();
 }
 
+function confirmSyncAction(action) {
+  var c = syncGetCreds();
+  if (!c.token || !c.gist) {
+    alert('Please enter your GitHub token and Gist ID above first.');
+    return;
+  }
+  // Re-read fields in case user just typed them
+  var tokenEl = document.getElementById('ss-token');
+  var gistEl  = document.getElementById('ss-gist');
+  if (tokenEl && tokenEl.value) localStorage.setItem('gh_token', tokenEl.value);
+  if (gistEl  && gistEl.value)  localStorage.setItem('gh_gist',  gistEl.value);
+
+  if (action === 'push') {
+    if (confirm('⇧ PUSH — this will overwrite the Gist with your current local data. Continue?')) syncPush();
+  } else {
+    if (confirm('⇩ PULL — this will overwrite your local data with what\'s in the Gist. Continue?')) syncPullSilent();
+  }
+}
+
+function syncPullSilent() {
+  var c = syncGetCreds();
+  if (!c.token || !c.gist) return;
+  var btn = document.getElementById('sync-btn');
+  if (btn) { btn.classList.add('syncing'); btn.textContent = '…'; }
+  fetch('https://api.github.com/gists/' + c.gist, {
+    headers: { 'Authorization': 'token ' + c.token, 'Accept': 'application/vnd.github.v3+json' }
+  })
+  .then(function(r) {
+    if (r.status === 401) throw new Error('Token invalid or expired (401)');
+    if (r.status === 404) throw new Error('Gist not found — check your Gist ID (404)');
+    if (!r.ok) throw new Error('GitHub returned HTTP ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    var file = data.files && data.files[GIST_FILENAME];
+    if (!file) throw new Error('No data in Gist yet — Push first from another device');
+    if (!file.content) throw new Error('Gist file is empty');
+    var pulled;
+    try { pulled = JSON.parse(file.content); } catch(e) { throw new Error('Gist data corrupted'); }
+    pulled.systemPhotos = state.systemPhotos;
+    state = pulled;
+    save();
+    markClean();
+    var now = new Date().toLocaleString();
+    localStorage.setItem('gh_last_sync', now);
+    syncFeedback('ok', 'Pulled at ' + now);
+    if (btn) { btn.textContent = '✓'; btn.classList.remove('syncing'); }
+    render();
+  })
+  .catch(function(e) {
+    syncFeedback('err', e.message);
+    if (btn) { btn.textContent = '✗'; btn.classList.remove('syncing'); }
+    alert('Pull failed: ' + e.message);
+  });
+}
 // ── AUTO-GROW TEXTAREA ──
 function autoGrow(el) {
   el.style.height = 'auto';
@@ -1269,8 +1309,11 @@ function init() {
   state = loadState();
   ensureValidDate();
   applyTheme(state.tab);
-  initAutoSync();
   render();
+  // Auto-pull on unlock if configured
+  var token = localStorage.getItem('gh_token');
+  var gist  = localStorage.getItem('gh_gist');
+  if (token && gist) syncPullSilent();
 
   // Swipe to navigate days
   var mc = document.getElementById('main');

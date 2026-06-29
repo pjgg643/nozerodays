@@ -141,6 +141,7 @@
     /* Task cards */
     .tasks-wrap{padding:8px 14px;display:flex;flex-direction:column;gap:6px}
     .task-card{background:var(--bg3);border-radius:var(--radius);padding:12px 12px 10px 14px;display:flex;flex-direction:column;border-left:3px solid var(--border2);transition:border-color .2s;position:relative}
+    .task-card[data-lv="0"]{border-left-color:#78aef0}
     .task-card[data-lv="1"]{border-left-color:var(--red)}
     .task-card[data-lv="2"]{border-left-color:var(--amber)}
     .task-card[data-lv="3"]{border-left-color:var(--green)}
@@ -227,8 +228,7 @@
 
     .sync-btn{height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid rgba(120,174,240,.3);background:rgba(120,174,240,.08);color:#78aef0;font-size:15px;font-weight:700;cursor:pointer;transition:all .18s;flex-shrink:0}
     .sync-btn:active{background:rgba(120,174,240,.22)}
-    .sync-btn.dirty{border-color:rgba(244,200,105,.7);background:rgba(244,200,105,.18);color:#f4c869;animation:pulse-dirty 1.8s ease-in-out infinite}
-    @keyframes pulse-dirty{0%,100%{box-shadow:0 0 0 0 rgba(244,200,105,.4)}50%{box-shadow:0 0 0 5px rgba(244,200,105,.0)}}
+    .sync-btn.dirty{border-color:rgba(244,200,105,.7);background:rgba(244,200,105,.18);color:#f4c869}
     .sync-btn.ok{border-color:rgba(95,212,160,.5);background:rgba(95,212,160,.12);color:#5fd4a0}
     .sync-btn.err{border-color:rgba(255,123,150,.5);background:rgba(255,123,150,.12);color:var(--red)}
     /* Sync settings */
@@ -453,14 +453,20 @@ var syncDirty = false;
 function markDirty() {
   syncDirty = true;
   var btn = document.getElementById('sync-btn');
-  if (btn) { btn.classList.add('dirty'); btn.textContent = '⇧'; btn.title = 'Changes made — push to GitHub'; }
+  if (btn) { btn.classList.add('dirty'); btn.title = 'Changes made — push to GitHub'; }
 }
 function markClean() {
   syncDirty = false;
   var btn = document.getElementById('sync-btn');
-  if (btn) { btn.classList.remove('dirty'); btn.textContent = '⇧'; btn.title = 'Push to GitHub'; }
+  if (btn) { btn.classList.remove('dirty'); btn.title = 'Push to GitHub'; }
 }
 
+// saveNav — persists state silently (tab/view/date changes), never marks dirty
+function saveNav() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch(e) {}
+}
+// save — persists state AND marks dirty (real data changes)
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -599,10 +605,10 @@ function ensureValidDate() {
 
 // ── SET TAB / VIEW ──
 function setTab(t) {
-  state.tab = t; ensureValidDate(); save(); applyTheme(t); render();
+  state.tab = t; ensureValidDate(); saveNav(); applyTheme(t); render();
 }
 function setView(v) {
-  state.view = v; save(); render();
+  state.view = v; saveNav(); render();
 }
 
 // ── RENDER ──
@@ -745,14 +751,14 @@ function renderDay() {
 function prevDay() {
   var d = parseDK(state.selectedDate); d.setDate(d.getDate()-1);
   if (state.tab === 'work') { while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()-1); }
-  state.selectedDate = dk(d); save(); renderDay();
+  state.selectedDate = dk(d); saveNav(); renderDay();
 }
 function nextDay() {
   var d = parseDK(state.selectedDate); d.setDate(d.getDate()+1);
   if (state.tab === 'work') { while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); }
-  state.selectedDate = dk(d); save(); renderDay();
+  state.selectedDate = dk(d); saveNav(); renderDay();
 }
-function goToday() { state.selectedDate = dk(today0()); save(); renderDay(); }
+function goToday() { state.selectedDate = dk(today0()); saveNav(); renderDay(); }
 
 function toggleLevelDescs(taskId) {
   var panel = document.getElementById('tld-' + taskId);
@@ -1310,10 +1316,14 @@ function init() {
   ensureValidDate();
   applyTheme(state.tab);
   render();
-  // Auto-pull on unlock if configured
+  // Auto-pull on unlock if configured and not synced recently (5 min cooldown)
   var token = localStorage.getItem('gh_token');
   var gist  = localStorage.getItem('gh_gist');
-  if (token && gist) syncPullSilent();
+  if (token && gist) {
+    var lastSync = localStorage.getItem('gh_last_sync');
+    var msSince = lastSync ? (Date.now() - new Date(lastSync).getTime()) : Infinity;
+    if (msSince > 5 * 60 * 1000) syncPullSilent();
+  }
 
   // Swipe to navigate days
   var mc = document.getElementById('main');

@@ -152,6 +152,8 @@
     .chip{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;font-size:12px;font-weight:800;cursor:pointer;border:2px solid;transition:background .15s,transform .1s;user-select:none;-webkit-user-select:none;position:relative}
     .chip input{display:none}
     .chip:active{transform:scale(.88)}
+    .chip0{border-color:#555;color:#777;background:rgba(255,255,255,.04)}
+    .chip0.on{background:rgba(255,255,255,.12);border-color:#888;color:#bbb}
     .chip1{border-color:var(--red);color:var(--red);background:rgba(255,123,150,.07)}
     .chip1.on{background:rgba(255,123,150,.22)}
     .chip2{border-color:var(--amber);color:var(--amber);background:rgba(255,176,72,.07)}
@@ -184,7 +186,7 @@
     .dot-legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text4)}
     .dot{display:inline-block;width:11px;height:11px;border-radius:50%;flex-shrink:0}
     .dot.lg{width:14px;height:14px}
-    .d0{background:#1e1e32}.d1{background:var(--red)}.d2{background:var(--amber)}.d3{background:var(--green)}
+    .d-1{background:#1e1e32}.d0{background:#444}.d1{background:var(--red)}.d2{background:var(--amber)}.d3{background:var(--green)}
 
     /* Month card */
     .month-card{background:var(--bg3);border-radius:var(--radius);padding:10px 12px;border:1px solid var(--border)}
@@ -221,7 +223,27 @@
     .photo-empty{width:100%;height:100%;background:var(--bg3);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--radius)}
     .photo-plus{font-size:32px;color:var(--text4)}
 
-    /* Lightbox */
+    .sync-btn{height:28px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid rgba(120,174,240,.3);background:rgba(120,174,240,.08);color:#78aef0;font-size:15px;font-weight:700;cursor:pointer;transition:all .18s;flex-shrink:0}
+    .sync-btn:active{background:rgba(120,174,240,.22)}
+    .sync-btn.syncing{opacity:.5;pointer-events:none}
+    .sync-btn.ok{border-color:rgba(95,212,160,.5);background:rgba(95,212,160,.12);color:#5fd4a0}
+    .sync-btn.err{border-color:rgba(255,123,150,.5);background:rgba(255,123,150,.12);color:var(--red)}
+    /* Sync settings */
+    .sync-settings{background:var(--bg3);border-radius:var(--radius);padding:14px 16px;border:1px solid rgba(120,174,240,.2);display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+    .sync-title{font-size:13px;font-weight:800;color:#78aef0;letter-spacing:.05em;text-transform:uppercase}
+    .sync-row{display:flex;flex-direction:column;gap:4px}
+    .sync-row-check{flex-direction:row;align-items:center}
+    .sync-lbl{font-size:11px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.06em}
+    .sync-inp{padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#1a1a28;color:var(--text);outline:none;width:100%;box-sizing:border-box}
+    .sync-check-lbl{font-size:13px;color:var(--text3);display:flex;align-items:center;gap:8px;cursor:pointer}
+    .sync-btns{display:flex;gap:8px}
+    .sync-action-btn{flex:1;padding:9px 0;border-radius:var(--radius-sm);font-size:13px;font-weight:700;cursor:pointer;border:1px solid;transition:all .15s}
+    .sync-action-btn.push{background:rgba(120,174,240,.12);border-color:rgba(120,174,240,.4);color:#78aef0}
+    .sync-action-btn.pull{background:rgba(95,212,160,.12);border-color:rgba(95,212,160,.4);color:#5fd4a0}
+    .sync-action-btn:active{opacity:.7}
+    .sync-last{font-size:11px;color:var(--text4);text-align:center}
+    .sync-help{font-size:11px;color:var(--text4);line-height:1.7;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--border)}
+    .sync-help strong{color:var(--text3)}
     .photo-lightbox{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:20px;gap:12px;position:relative}
     .lightbox-img{max-width:100%;max-height:80vh;border-radius:var(--radius);object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.7)}
     .lightbox-lbl{font-size:14px;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase;text-align:center}
@@ -302,6 +324,7 @@
       <button class="view-btn" id="v-day" data-view="day">Day</button>
       <button class="view-btn" id="v-week" data-view="week">Week</button>
       <button class="view-btn" id="v-month" data-view="month">Month</button>
+      <button class="sync-btn" id="sync-btn" onclick="syncPush()" title="Push to GitHub">⇧</button>
     </div>
   </div>
 
@@ -484,12 +507,16 @@ function groupByWeek(days) {
 }
 
 // ── ANALYTICS HELPERS ──
+// Returns: 3/2/1 = levels done, 0 = explicit zero marked, -1 = no entry
 function getHighestLevel(task, ds) {
   for (var l = 3; l >= 1; l--) { if (task.completions[ds+'-'+l]) return l; }
-  return 0;
+  if (task.completions[ds+'-0']) return 0;
+  return -1;
 }
 function dotHtml(l, lg) {
-  return '<span class="dot' + (lg?' lg':'') + ' d' + l + '"></span>';
+  // l: 3=green, 2=amber, 1=red, 0=grey (explicit zero), -1=empty
+  var cls = l < 0 ? 'd-1' : 'd' + l;
+  return '<span class="dot' + (lg?' lg':'') + ' ' + cls + '"></span>';
 }
 function countNonZeroDays(tasks, days) {
   if (!tasks.length) return 0;
@@ -644,6 +671,13 @@ function renderDay() {
 
       tasksH += '</div>' + // end task-main
         '<div class="task-chips">';
+      // Level 0 — explicit zero
+      var key0 = state.selectedDate + '-0';
+      var checked0 = !!task.completions[key0];
+      tasksH += '<label class="chip chip0' + (checked0?' on':'') + '" title="Mark as zero">' +
+        '<input type="checkbox" ' + (checked0?'checked':'') +
+        ' onchange="onCheck(\'' + task.id + '\',\'' + state.selectedDate + '\',0,this)" />' +
+        '0</label>';
       for (var l = 1; l <= 3; l++) {
         var key = state.selectedDate + '-' + l;
         var checked = !!task.completions[key];
@@ -716,8 +750,8 @@ function renderWeek() {
   var h = '<div class="ana-wrap"><div class="ana-period">' + period + '</div>';
 
   // Summary
-  h += '<div class="summary-card"><div><span class="sum-num" style="color:' + (zeroDays===0?'var(--green)':'var(--red)') + '">' + zeroDays + '</span><span class="sum-den"> / ' + days.length + '</span></div>' +
-    '<div class="sum-lbl">Zero days this week' + (zeroDays === 0 ? ' — perfect week! 🔥' : '') + '</div></div>';
+  h += '<div class="summary-card"><div><span class="sum-num" style="color:' + (nz===days.length?'var(--green)':'var(--ac)') + '">' + nz + '</span><span class="sum-den"> / ' + days.length + '</span></div>' +
+    '<div class="sum-lbl">No-zero days this week' + (zeroDays === 0 ? ' — perfect week! 🔥' : '') + '</div></div>';
 
   if (tasks.length) {
     // Week table header
@@ -739,9 +773,9 @@ function renderWeek() {
     }
 
     h += '<div class="dot-legend">';
-    var legends = ['None','Level 1','Level 2','Level 3'];
-    for (var dl = 0; dl <= 3; dl++) {
-      h += '<div class="dot-legend-item">' + dotHtml(dl, false) + ' ' + legends[dl] + '</div>';
+    var legends = [['None',-1],['Zero',0],['Level 1',1],['Level 2',2],['Level 3',3]];
+    for (var dl = 0; dl < legends.length; dl++) {
+      h += '<div class="dot-legend-item">' + dotHtml(legends[dl][1], false) + ' ' + legends[dl][0] + '</div>';
     }
     h += '</div></div>';
   } else {
@@ -760,8 +794,8 @@ function renderMonth() {
   var zeroDays = days.length - nz;
   var h = '<div class="ana-wrap">';
   h += '<div class="ana-period">' + MON_L[t.getMonth()] + ' ' + t.getFullYear() + '</div>';
-  h += '<div class="summary-card"><div><span class="sum-num" style="color:' + (zeroDays===0?'var(--green)':'var(--red)') + '">' + zeroDays + '</span><span class="sum-den"> / ' + days.length + '</span></div>' +
-    '<div class="sum-lbl">Zero days this month' + (zeroDays === 0 ? ' — perfect month! 🔥' : '') + '</div></div>';
+  h += '<div class="summary-card"><div><span class="sum-num" style="color:' + (nz===days.length?'var(--green)':'var(--ac)') + '">' + nz + '</span><span class="sum-den"> / ' + days.length + '</span></div>' +
+    '<div class="sum-lbl">No-zero days this month' + (zeroDays === 0 ? ' — perfect month! 🔥' : '') + '</div></div>';
 
   if (tasks.length) {
     h += '<div class="month-card"><div class="month-tasks-grid">';
@@ -827,7 +861,34 @@ var SYS_LABELS = ['','','','','','','',''];
 
 function renderSystem() {
   var mc = document.getElementById('main');
-  var h = '<div class="sys-wrap"><p class="sys-note">Your discipline system. Tap a slot to add a photo.</p><div class="photo-grid">';
+  var token = localStorage.getItem('gh_token') || '';
+  var gist  = localStorage.getItem('gh_gist')  || '';
+  var auto  = localStorage.getItem('gh_auto')  === '1';
+  var lastSync = localStorage.getItem('gh_last_sync') || '';
+
+  var syncHtml = '<div class="sync-settings">' +
+    '<div class="sync-title">☁ GitHub Gist Sync</div>' +
+    '<div class="sync-row"><label class="sync-lbl">Personal Access Token</label>' +
+    '<input class="sync-inp" type="password" id="ss-token" value="' + esc(token) + '" placeholder="ghp_…" ' +
+    'oninput="localStorage.setItem(\'gh_token\',this.value)" /></div>' +
+    '<div class="sync-row"><label class="sync-lbl">Gist ID</label>' +
+    '<input class="sync-inp" type="text" id="ss-gist" value="' + esc(gist) + '" placeholder="abc123…" ' +
+    'oninput="localStorage.setItem(\'gh_gist\',this.value)" /></div>' +
+    '<div class="sync-row sync-row-check"><label class="sync-check-lbl">' +
+    '<input type="checkbox" ' + (auto?'checked':'') + ' onchange="localStorage.setItem(\'gh_auto\',this.checked?\'1\':\'0\')" /> ' +
+    'Auto-sync on every save</label></div>' +
+    '<div class="sync-btns">' +
+    '<button class="sync-action-btn push" onclick="syncPush()">⇧ Push (save to Gist)</button>' +
+    '<button class="sync-action-btn pull" onclick="syncPull()">⇩ Pull (load from Gist)</button>' +
+    '</div>' +
+    (lastSync ? '<div class="sync-last">Last sync: ' + lastSync + '</div>' : '') +
+    '<div class="sync-help">1. Go to github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → New token<br>' +
+    '2. Give it only the <strong>gist</strong> scope, copy the token above<br>' +
+    '3. Go to gist.github.com → New secret gist → create any file → copy the ID from the URL<br>' +
+    '4. Hit Push from your phone, Pull on your browser (or vice versa)</div>' +
+    '</div>';
+
+  var h = '<div class="sys-wrap">' + syncHtml + '<p class="sys-note" style="margin-top:8px">Your discipline system. Tap a slot to add a photo.</p><div class="photo-grid">';
   for (var i = 0; i < 8; i++) {
     var up = state.systemPhotos[i];
     h += '<div class="photo-slot">';
@@ -888,7 +949,114 @@ function viewPhoto(idx) {
   overlay.style.display = 'flex';
 }
 
-// ── TASK ACTIONS ──
+// ── GITHUB GIST SYNC ──
+var GIST_FILENAME = 'nzd_state.json';
+
+function syncGetCreds() {
+  return {
+    token: localStorage.getItem('gh_token') || '',
+    gist:  localStorage.getItem('gh_gist')  || ''
+  };
+}
+
+function syncFeedback(state, msg) {
+  var btn = document.getElementById('sync-btn');
+  if (!btn) return;
+  btn.className = 'sync-btn ' + state;
+  btn.title = msg;
+  if (state === 'ok' || state === 'err') {
+    setTimeout(function() {
+      btn.className = 'sync-btn';
+      btn.title = 'Push to GitHub';
+      btn.textContent = '⇧';
+    }, 3000);
+  }
+}
+
+function syncPush() {
+  var c = syncGetCreds();
+  if (!c.token || !c.gist) {
+    alert('Please set your GitHub token and Gist ID in the System tab first.');
+    return;
+  }
+  var btn = document.getElementById('sync-btn');
+  if (btn) { btn.classList.add('syncing'); btn.textContent = '…'; }
+
+  // Strip photos from sync payload (too large) — store separately
+  var payload = JSON.stringify(state);
+
+  fetch('https://api.github.com/gists/' + c.gist, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': 'token ' + c.token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ files: { [GIST_FILENAME]: { content: payload } } })
+  })
+  .then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var now = new Date().toLocaleString();
+    localStorage.setItem('gh_last_sync', now);
+    syncFeedback('ok', 'Pushed at ' + now);
+    if (btn) btn.textContent = '✓';
+    if (state.tab === 'system') renderSystem();
+  })
+  .catch(function(e) {
+    syncFeedback('err', 'Push failed: ' + e.message);
+    if (btn) btn.textContent = '✗';
+  });
+}
+
+function syncPull() {
+  var c = syncGetCreds();
+  if (!c.token || !c.gist) {
+    alert('Please set your GitHub token and Gist ID in the System tab first.');
+    return;
+  }
+  if (!confirm('Pull from GitHub? This will REPLACE your local data with the Gist version.')) return;
+
+  var btn = document.getElementById('sync-btn');
+  if (btn) { btn.classList.add('syncing'); btn.textContent = '…'; }
+
+  fetch('https://api.github.com/gists/' + c.gist, {
+    headers: { 'Authorization': 'token ' + c.token }
+  })
+  .then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    var file = data.files && data.files[GIST_FILENAME];
+    if (!file || !file.content) throw new Error('File not found in Gist');
+    var pulled = JSON.parse(file.content);
+    // Preserve local photos (not synced due to size)
+    pulled.systemPhotos = state.systemPhotos;
+    state = pulled;
+    save();
+    var now = new Date().toLocaleString();
+    localStorage.setItem('gh_last_sync', now);
+    syncFeedback('ok', 'Pulled at ' + now);
+    if (btn) btn.textContent = '✓';
+    render();
+  })
+  .catch(function(e) {
+    syncFeedback('err', 'Pull failed: ' + e.message);
+    if (btn) btn.textContent = '✗';
+  });
+}
+
+// Hook auto-sync into save
+var _origSave = null;
+function initAutoSync() {
+  // Wrap save() to auto-push when enabled
+  var realSave = save;
+  save = function() {
+    realSave();
+    if (localStorage.getItem('gh_auto') === '1') {
+      syncPush();
+    }
+  };
+}
 function addTask() {
   var inp = document.getElementById('task-inp'); if (!inp) return;
   var name = inp.value.trim(); if (!name) return;
@@ -1087,6 +1255,7 @@ function init() {
   state = loadState();
   ensureValidDate();
   applyTheme(state.tab);
+  initAutoSync();
   render();
 
   // Swipe to navigate days

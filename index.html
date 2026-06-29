@@ -1226,7 +1226,6 @@ function syncPullSilent() {
   .catch(function(e) {
     syncFeedback('err', e.message);
     if (btn) { btn.textContent = '✗'; btn.classList.remove('syncing'); }
-    alert('Pull failed: ' + e.message);
   });
 }
 // ── AUTO-GROW TEXTAREA ──

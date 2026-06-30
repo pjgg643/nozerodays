@@ -140,7 +140,12 @@
 
     /* Task cards */
     .tasks-wrap{padding:8px 14px;display:flex;flex-direction:column;gap:6px}
-    .task-card{background:var(--bg3);border-radius:var(--radius);padding:12px 12px 10px 14px;display:flex;flex-direction:column;border-left:3px solid var(--border2);transition:border-color .2s;position:relative}
+    .task-card{background:var(--bg3);border-radius:var(--radius);padding:12px 12px 10px 14px;display:flex;flex-direction:column;border-left:3px solid var(--border2);transition:border-color .2s,opacity .15s,transform .15s;position:relative}
+    .task-card.dragging{opacity:.4;transform:scale(.98)}
+    .task-card.drag-over{box-shadow:0 -2px 0 0 var(--ac)}
+    .drag-handle{position:absolute;left:-1px;top:50%;transform:translateY(-50%);width:18px;height:36px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--text4);font-size:14px;opacity:0;transition:opacity .15s;touch-action:none}
+    .task-card:hover .drag-handle{opacity:1}
+    .drag-handle:active{cursor:grabbing}
     .task-card[data-lv="0"]{border-left-color:#555}
     .task-card[data-lv="1"]{border-left-color:var(--red)}
     .task-card[data-lv="2"]{border-left-color:var(--amber)}
@@ -698,7 +703,8 @@ function renderDay() {
       var lvDescs = task.levelDescs || ['','',''];
       var hasAnyDesc = lvDescs[0] || lvDescs[1] || lvDescs[2];
 
-      tasksH += '<div class="task-card" data-lv="' + hl + '" id="tc-' + task.id + '">' +
+      tasksH += '<div class="task-card" data-lv="' + hl + '" id="tc-' + task.id + '" draggable="true" data-task-id="' + task.id + '">' +
+        '<div class="drag-handle">⠿</div>' +
         '<div class="task-card-top">' +
         '<div class="task-main">' +
         '<input class="task-name-inp" type="text" value="' + esc(task.name) + '" ' +
@@ -754,6 +760,8 @@ function renderDay() {
   // Auto-grow any textareas in task level desc panels
   var tas = mc.querySelectorAll('textarea.task-desc-inp');
   for (var agi = 0; agi < tas.length; agi++) autoGrow(tas[agi]);
+  // Wire drag-to-reorder
+  initDragReorder(mc);
 }
 
 function prevDay() {
@@ -1287,7 +1295,87 @@ function syncPullSilent() {
     if (btn) { btn.textContent = '✗'; btn.classList.remove('syncing'); }
   });
 }
-// ── AUTO-GROW TEXTAREA ──
+// ── DRAG TO REORDER ──
+function initDragReorder(mc) {
+  var wrap = mc.querySelector('.tasks-wrap');
+  if (!wrap) return;
+  var dragged = null, touchCard = null, touchY = 0;
+
+  // Desktop drag (HTML5)
+  wrap.addEventListener('dragstart', function(e) {
+    var card = e.target.closest('.task-card');
+    if (!card) return;
+    dragged = card;
+    setTimeout(function() { card.classList.add('dragging'); }, 0);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  wrap.addEventListener('dragend', function() {
+    if (dragged) dragged.classList.remove('dragging');
+    wrap.querySelectorAll('.drag-over').forEach(function(el) { el.classList.remove('drag-over'); });
+    dragged = null;
+  });
+  wrap.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    var over = e.target.closest('.task-card');
+    if (!over || over === dragged) return;
+    wrap.querySelectorAll('.drag-over').forEach(function(el) { el.classList.remove('drag-over'); });
+    over.classList.add('drag-over');
+  });
+  wrap.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var over = e.target.closest('.task-card');
+    if (!over || !dragged || over === dragged) return;
+    over.classList.remove('drag-over');
+    reorderTasks(dragged.dataset.taskId, over.dataset.taskId);
+  });
+
+  // Touch drag (mobile)
+  wrap.addEventListener('touchstart', function(e) {
+    var handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    touchCard = handle.closest('.task-card');
+    touchY = e.touches[0].clientY;
+    touchCard.classList.add('dragging');
+  }, { passive: true });
+  wrap.addEventListener('touchmove', function(e) {
+    if (!touchCard) return;
+    e.preventDefault();
+    var y = e.touches[0].clientY;
+    var cards = Array.from(wrap.querySelectorAll('.task-card'));
+    wrap.querySelectorAll('.drag-over').forEach(function(el) { el.classList.remove('drag-over'); });
+    for (var i = 0; i < cards.length; i++) {
+      var r = cards[i].getBoundingClientRect();
+      if (y >= r.top && y <= r.bottom && cards[i] !== touchCard) {
+        cards[i].classList.add('drag-over');
+        break;
+      }
+    }
+  }, { passive: false });
+  wrap.addEventListener('touchend', function() {
+    if (!touchCard) return;
+    touchCard.classList.remove('dragging');
+    var over = wrap.querySelector('.drag-over');
+    if (over) {
+      over.classList.remove('drag-over');
+      reorderTasks(touchCard.dataset.taskId, over.dataset.taskId);
+    }
+    touchCard = null;
+  });
+}
+
+function reorderTasks(fromId, toId) {
+  var tasks = state[state.tab].tasks;
+  var fromIdx = -1, toIdx = -1;
+  for (var i = 0; i < tasks.length; i++) {
+    if (tasks[i].id === fromId) fromIdx = i;
+    if (tasks[i].id === toId) toIdx = i;
+  }
+  if (fromIdx === -1 || toIdx === -1) return;
+  var moved = tasks.splice(fromIdx, 1)[0];
+  tasks.splice(toIdx, 0, moved);
+  save();
+  renderDay();
+}
 function autoGrow(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';

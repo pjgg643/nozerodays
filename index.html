@@ -313,7 +313,7 @@
 <div id="lock">
   <div class="lock-logo">⚡</div>
   <h1 class="lock-title">No Zero Days</h1>
-  <p class="lock-sub">Enter your PIN to unlock</p>
+  <p class="lock-sub" id="lock-sub">Enter your PIN to unlock</p>
   <div class="pin-dots">
     <div class="pin-dot" id="d0"></div>
     <div class="pin-dot" id="d1"></div>
@@ -366,42 +366,130 @@
 'use strict';
 
 // ── CONFIG ──
-var PIN = '2518';
 var STORAGE_KEY = 'tt_v2';
+var PIN_KEY = 'nzd_pin_hash';
 
 // ── PIN STATE ──
 var pinBuffer = '';
+var pinMode = 'unlock'; // 'unlock' | 'setup' | 'setup-confirm' | 'change-old' | 'change-new' | 'change-confirm'
+var pinSetupFirst = '';
+
+async function hashPin(pin) {
+  var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+}
 
 function pinKey(k) {
   if (pinBuffer.length >= 4) return;
   pinBuffer += k;
   updateDots();
-  if (pinBuffer.length === 4) {
-    setTimeout(checkPin, 120);
-  }
+  if (pinBuffer.length === 4) setTimeout(checkPin, 120);
 }
 function pinDel() {
-  if (pinBuffer.length > 0) {
-    pinBuffer = pinBuffer.slice(0, -1);
-    updateDots();
-  }
+  if (pinBuffer.length > 0) { pinBuffer = pinBuffer.slice(0,-1); updateDots(); }
 }
 function updateDots() {
   for (var i = 0; i < 4; i++) {
     document.getElementById('d' + i).classList.toggle('filled', i < pinBuffer.length);
   }
 }
+
 function checkPin() {
-  if (pinBuffer === PIN) {
-    document.getElementById('lock').style.display = 'none';
-    document.getElementById('app').classList.add('visible');
-    init();
-  } else {
-    document.getElementById('pin-err').textContent = 'Incorrect PIN';
-    pinBuffer = '';
-    updateDots();
-    setTimeout(function() { document.getElementById('pin-err').textContent = ''; }, 2500);
+  var entered = pinBuffer;
+  pinBuffer = ''; updateDots();
+
+  if (pinMode === 'setup') {
+    pinSetupFirst = entered;
+    pinMode = 'setup-confirm';
+    document.getElementById('lock-sub').textContent = 'Confirm your new PIN';
+    document.getElementById('pin-err').textContent = '';
+    return;
   }
+  if (pinMode === 'setup-confirm') {
+    if (entered !== pinSetupFirst) {
+      document.getElementById('pin-err').textContent = 'PINs don\'t match — try again';
+      pinMode = 'setup'; pinSetupFirst = '';
+      document.getElementById('lock-sub').textContent = 'Choose a 4-digit PIN';
+      setTimeout(function(){ document.getElementById('pin-err').textContent = ''; }, 2500);
+      return;
+    }
+    hashPin(entered).then(function(h) {
+      localStorage.setItem(PIN_KEY, h);
+      unlock();
+    });
+    return;
+  }
+  if (pinMode === 'change-old') {
+    hashPin(entered).then(function(h) {
+      if (h !== localStorage.getItem(PIN_KEY)) {
+        document.getElementById('pin-err').textContent = 'Incorrect current PIN';
+        setTimeout(function(){ document.getElementById('pin-err').textContent = ''; }, 2500);
+        return;
+      }
+      pinMode = 'change-new';
+      document.getElementById('lock-sub').textContent = 'Enter your new PIN';
+    });
+    return;
+  }
+  if (pinMode === 'change-new') {
+    pinSetupFirst = entered;
+    pinMode = 'change-confirm';
+    document.getElementById('lock-sub').textContent = 'Confirm your new PIN';
+    return;
+  }
+  if (pinMode === 'change-confirm') {
+    if (entered !== pinSetupFirst) {
+      document.getElementById('pin-err').textContent = 'PINs don\'t match — try again';
+      pinMode = 'change-new'; pinSetupFirst = '';
+      document.getElementById('lock-sub').textContent = 'Enter your new PIN';
+      setTimeout(function(){ document.getElementById('pin-err').textContent = ''; }, 2500);
+      return;
+    }
+    hashPin(entered).then(function(h) {
+      localStorage.setItem(PIN_KEY, h);
+      document.getElementById('lock').style.display = 'none';
+      document.getElementById('app').classList.add('visible');
+      document.getElementById('pin-err').textContent = '';
+    });
+    return;
+  }
+  // Default: unlock mode
+  hashPin(entered).then(function(h) {
+    if (h === localStorage.getItem(PIN_KEY)) {
+      unlock();
+    } else {
+      document.getElementById('pin-err').textContent = 'Incorrect PIN';
+      setTimeout(function(){ document.getElementById('pin-err').textContent = ''; }, 2500);
+    }
+  });
+}
+
+function unlock() {
+  document.getElementById('lock').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  init();
+}
+
+// Called on page load — show setup or unlock screen
+function initLock() {
+  var stored = localStorage.getItem(PIN_KEY);
+  if (!stored) {
+    pinMode = 'setup';
+    document.getElementById('lock-sub').textContent = 'Choose a 4-digit PIN';
+  } else {
+    pinMode = 'unlock';
+    document.getElementById('lock-sub').textContent = 'Enter your PIN to unlock';
+  }
+}
+
+// Change PIN — called from System tab
+function startChangePin() {
+  pinMode = 'change-old';
+  pinBuffer = ''; pinSetupFirst = '';
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('lock').style.display = '';
+  document.getElementById('lock-sub').textContent = 'Enter your current PIN';
+  updateDots();
 }
 
 // ── STATE ──
@@ -1172,7 +1260,7 @@ function renderGithub() {
     'oninput="localStorage.setItem(\'gh_gist\',this.value)" /></div>' +
     (lastSync ? '<div class="sync-last">Last sync: ' + lastSync + '</div>' : '') +
     '<div class="sync-confirm-area">' +
-    '<div class="sync-confirm-label">What would you like to do?</div>' +
+    '<div class="sync-confirm-label">Sync</div>' +
     '<div class="sync-confirm-btns">' +
     '<button class="sync-confirm-btn push" onclick="confirmSyncAction(\'push\')">' +
     '<span class="sync-confirm-icon">⇧</span>' +
@@ -1185,6 +1273,10 @@ function renderGithub() {
     '<span class="sync-confirm-sub">Load Gist → local</span>' +
     '</button>' +
     '</div>' +
+    '</div>' +
+    '<div class="sync-confirm-area">' +
+    '<div class="sync-confirm-label">Security</div>' +
+    '<button class="sync-action-btn push" style="width:100%;margin-top:2px" onclick="startChangePin()">🔒 Change PIN</button>' +
     '</div>' +
     '</div></div>';
   mc.innerHTML = h;
@@ -1486,6 +1578,8 @@ function init() {
 
 // ── BOOTSTRAP — wire up all static listeners ──
 document.addEventListener('DOMContentLoaded', function() {
+
+  initLock();
 
   // PIN numpad — handled via inline onclick on each button
 
